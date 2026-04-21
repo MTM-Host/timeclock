@@ -184,7 +184,7 @@ def punch():
     if punch_type not in valid_types:
         return jsonify({'success': False, 'message': 'Invalid punch type.'})
     
-    now = datetime.now()
+    now = datetime.now(pytz.timezone('America/Los_Angeles'))
     
     with get_db() as db:
         emp = db.execute('SELECT * FROM employees WHERE id=? AND active=1', (employee_id,)).fetchone()
