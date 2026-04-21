@@ -434,6 +434,25 @@ def send_payroll_email():
     except Exception as e:
         print(f"Failed to send email: {e}")
 
+@app.route('/api/admin/test-email')
+def test_email():
+    if not session.get('admin'): return jsonify({'error':'Unauthorized'}), 401
+    if not EMAIL_SENDER or not EMAIL_RECIPIENT:
+        return jsonify({'success': False, 'message': 'Email not configured. Check your Railway variables.'})
+    try:
+        msg = MIMEMultipart()
+        msg['From'] = EMAIL_SENDER
+        msg['To'] = EMAIL_RECIPIENT
+        msg['Subject'] = 'Time Clock — Test Email ✅'
+        msg.attach(MIMEText('Your Time Clock email reports are working correctly! You will receive payroll reports automatically on the 1st and 15th of each month.', 'plain'))
+        with smtplib.SMTP(EMAIL_SMTP, EMAIL_PORT) as server:
+            server.starttls()
+            server.login(EMAIL_SENDER, EMAIL_PASSWORD)
+            server.send_message(msg)
+        return jsonify({'success': True, 'message': f'Test email sent to {EMAIL_RECIPIENT}!'})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)})
+
 @app.route('/api/admin/report/csv')
 def download_csv():
     if not session.get('admin'): return jsonify({'error':'Unauthorized'}), 401
@@ -441,6 +460,25 @@ def download_csv():
     end_str = request.args.get('end')
     csv_data = generate_csv_report(start_str, end_str)
     return send_file(io.BytesIO(csv_data.encode()), mimetype='text/csv', as_attachment=True, download_name=f'payroll_{start_str}_{end_str}.csv')
+
+@app.route('/api/admin/test-email', methods=['POST'])
+def test_email():
+    if not session.get('admin'): return jsonify({'error':'Unauthorized'}), 401
+    if not EMAIL_SENDER or not EMAIL_RECIPIENT:
+        return jsonify({'success': False, 'message': 'Email not configured. Check your Railway variables.'})
+    try:
+        msg = MIMEMultipart()
+        msg['From'] = EMAIL_SENDER
+        msg['To'] = EMAIL_RECIPIENT
+        msg['Subject'] = 'Time Clock — Test Email ✅'
+        msg.attach(MIMEText('Your Time Clock email is working correctly! You will receive payroll reports automatically on the 1st and 15th of each month.', 'plain'))
+        with smtplib.SMTP(EMAIL_SMTP, EMAIL_PORT) as server:
+            server.starttls()
+            server.login(EMAIL_SENDER, EMAIL_PASSWORD)
+            server.send_message(msg)
+        return jsonify({'success': True, 'message': f'Test email sent to {EMAIL_RECIPIENT}!'})
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'Failed: {str(e)}'})
 
 scheduler = BackgroundScheduler()
 scheduler.add_job(send_payroll_email, 'cron', hour=8, minute=0)
