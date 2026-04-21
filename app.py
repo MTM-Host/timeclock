@@ -434,7 +434,7 @@ def send_payroll_email():
     except Exception as e:
         print(f"Failed to send email: {e}")
 
-@app.route('/api/admin/test-email')
+@app.route('/api/admin/test-email', methods=['GET', 'POST'])
 def test_email():
     if not session.get('admin'): return jsonify({'error':'Unauthorized'}), 401
     if not EMAIL_SENDER or not EMAIL_RECIPIENT:
