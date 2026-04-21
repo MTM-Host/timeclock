@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin Login — Time Clock</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@700;800&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #0d0d0f; --surface: #18181c; --surface2: #222228;
+    --border: #2e2e38; --accent: #e8ff47; --accent-dim: rgba(232,255,71,0.12);
+    --text: #f0f0f0; --muted: #888; --danger: #ff5e5e;
+  }
+  body {
+    font-family: 'DM Mono', monospace; background: var(--bg); color: var(--text);
+    min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px;
+  }
+  body::before {
+    content: ''; position: fixed; inset: 0;
+    background: radial-gradient(ellipse 80% 60% at 50% 0%, rgba(232,255,71,0.06) 0%, transparent 60%);
+    pointer-events: none;
+  }
+  .wrap { width: 100%; max-width: 380px; position: relative; z-index: 1; }
+  .brand { text-align: center; margin-bottom: 32px; }
+  .brand h1 { font-family: 'Syne', sans-serif; font-size: 1.8rem; font-weight: 800; color: var(--accent); }
+  .brand p { font-size: 0.78rem; color: var(--muted); margin-top: 6px; letter-spacing: 0.08em; text-transform: uppercase; }
+  .card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 36px;
+    position: relative; overflow: hidden;
+  }
+  .card::before {
+    content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent); opacity: 0.4;
+  }
+  .label { font-size: 0.72rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); margin-bottom: 10px; }
+  input {
+    width: 100%; background: var(--surface2); border: 1.5px solid var(--border); border-radius: 10px;
+    padding: 14px 18px; font-family: 'DM Mono', monospace; font-size: 1rem; color: var(--text);
+    outline: none; transition: border-color 0.2s;
+  }
+  input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-dim); }
+  .btn {
+    width: 100%; margin-top: 16px; padding: 15px; border-radius: 10px; border: none;
+    font-family: 'Syne', sans-serif; font-size: 1rem; font-weight: 700; cursor: pointer;
+    background: var(--accent); color: #0d0d0f; transition: all 0.15s;
+  }
+  .btn:hover { filter: brightness(1.1); }
+  .error { display: none; margin-top: 14px; padding: 12px 16px; border-radius: 8px; font-size: 0.85rem; text-align: center; background: rgba(255,94,94,0.1); border: 1px solid rgba(255,94,94,0.25); color: var(--danger); }
+  .back { display: block; text-align: center; margin-top: 20px; font-size: 0.75rem; color: var(--muted); text-decoration: none; letter-spacing: 0.08em; text-transform: uppercase; }
+  .back:hover { color: var(--accent); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="brand">
+    <h1>Admin Access</h1>
+    <p>Time Clock Dashboard</p>
+  </div>
+  <div class="card">
+    <div class="label">Admin Password</div>
+    <input type="password" id="pwInput" placeholder="Enter password" onkeydown="if(event.key==='Enter')login()" />
+    <button class="btn" onclick="login()">Enter Dashboard →</button>
+    <div class="error" id="errMsg">Incorrect password. Try again.</div>
+  </div>
+  <a href="/" class="back">← Back to Time Clock</a>
+</div>
+<script>
+  async function login() {
+    const pw = document.getElementById('pwInput').value;
+    const res = await fetch('/admin/login', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({password: pw})
+    });
+    const data = await res.json();
+    if (data.success) { window.location.href = '/admin'; }
+    else { document.getElementById('errMsg').style.display = 'block'; }
+  }
+</script>
+</body>
+</html>
