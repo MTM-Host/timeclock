@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin Dashboard — Time Clock</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@700;800&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #0d0d0f; --surface: #18181c; --surface2: #222228; --surface3: #2a2a32;
+    --border: #2e2e38; --accent: #e8ff47; --accent-dim: rgba(232,255,71,0.12);
+    --text: #f0f0f0; --muted: #888; --muted2: #555; --danger: #ff5e5e;
+    --success: #47ff9c; --warn: #ffb347;
+  }
+  body { font-family: 'DM Mono', monospace; background: var(--bg); color: var(--text); min-height: 100vh; }
+  
+  /* Nav */
+  nav {
+    background: var(--surface); border-bottom: 1px solid var(--border);
+    padding: 0 32px; display: flex; align-items: center; justify-content: space-between;
+    height: 60px; position: sticky; top: 0; z-index: 100;
+  }
+  .nav-brand { font-family: 'Syne', sans-serif; font-size: 1.1rem; font-weight: 800; color: var(--accent); }
+  .nav-links { display: flex; gap: 8px; }
+  .nav-tab {
+    padding: 8px 16px; border-radius: 8px; border: none; background: transparent;
+    font-family: 'DM Mono', monospace; font-size: 0.78rem; color: var(--muted);
+    cursor: pointer; letter-spacing: 0.05em; transition: all 0.15s;
+  }
+  .nav-tab:hover { color: var(--text); background: var(--surface2); }
+  .nav-tab.active { background: var(--accent-dim); color: var(--accent); }
+  .nav-right { display: flex; align-items: center; gap: 16px; }
+  .logout { font-size: 0.72rem; color: var(--muted); text-decoration: none; letter-spacing: 0.08em; }
+  .logout:hover { color: var(--danger); }
+
+  /* Layout */
+  .main { max-width: 1100px; margin: 0 auto; padding: 32px 24px; }
+  .page { display: none; }
+  .page.active { display: block; }
+
+  /* Cards */
+  .card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+    padding: 24px; margin-bottom: 20px;
+  }
+  .card-title {
+    font-family: 'Syne', sans-serif; font-size: 1rem; font-weight: 700;
+    margin-bottom: 18px; display: flex; align-items: center; gap: 10px;
+  }
+  .card-title span { font-size: 0.7rem; color: var(--muted); font-family: 'DM Mono', monospace; font-weight: 400; }
+
+  /* Table */
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+  th { text-align: left; padding: 8px 12px; font-size: 0.68rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); border-bottom: 1px solid var(--border); }
+  td { padding: 11px 12px; border-bottom: 1px solid var(--border); }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: var(--surface2); }
+
+  .status-dot {
+    display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 8px; vertical-align: middle;
+  }
+  .dot-in { background: var(--success); box-shadow: 0 0 6px var(--success); }
+  .dot-lunch { background: var(--warn); }
+  .dot-out { background: var(--muted2); }
+
+  /* Grid */
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  @media(max-width: 700px) { .grid2 { grid-template-columns: 1fr; } .nav-links { gap: 4px; } .nav-tab { padding: 6px 10px; } }
+
+  /* Form */
+  .form-row { display: flex; gap: 12px; flex-wrap: wrap; }
+  .form-group { flex: 1; min-width: 160px; }
+  .form-label { font-size: 0.7rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; display: block; }
+  input[type=text], input[type=date], input[type=password] {
+    width: 100%; background: var(--surface2); border: 1.5px solid var(--border); border-radius: 8px;
+    padding: 10px 14px; font-family: 'DM Mono', monospace; font-size: 0.9rem; color: var(--text); outline: none;
+    transition: border-color 0.2s;
+  }
+  input:focus { border-color: var(--accent); }
+  .btn { padding: 10px 20px; border-radius: 8px; border: none; font-family: 'Syne', sans-serif; font-size: 0.85rem; font-weight: 700; cursor: pointer; transition: all 0.15s; }
+  .btn-accent { background: var(--accent); color: #0d0d0f; }
+  .btn-accent:hover { filter: brightness(1.1); }
+  .btn-ghost { background: var(--surface2); border: 1px solid var(--border); color: var(--text); }
+  .btn-ghost:hover { border-color: var(--accent); color: var(--accent); }
+  .btn-danger { background: rgba(255,94,94,0.15); border: 1px solid rgba(255,94,94,0.3); color: var(--danger); font-size: 0.75rem; padding: 6px 12px; }
+  .btn-danger:hover { background: rgba(255,94,94,0.25); }
+
+  /* Report */
+  .report-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: gap; }
+  .emp-block { margin-bottom: 28px; }
+  .emp-block-name { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 1rem; padding-bottom: 8px; border-bottom: 1px solid var(--border); margin-bottom: 10px; display: flex; justify-content: space-between; }
+  .emp-total { color: var(--accent); }
+  .print-only { display: none; }
+  @media print {
+    nav, .no-print { display: none !important; }
+    .print-only { display: block; }
+    body { background: white; color: black; }
+    .card { border: 1px solid #ccc; background: white; }
+    table { font-size: 11px; }
+    td, th { color: black; border-color: #ddd; }
+    .emp-block-name { color: black; border-color: #999; }
+    .emp-total { color: #333; }
+  }
+
+  /* Chart */
+  .chart-wrap { position: relative; height: 220px; }
+
+  /* Alert */
+  .alert { padding: 12px 16px; border-radius: 8px; font-size: 0.82rem; margin-bottom: 16px; display: none; }
+  .alert-success { background: rgba(71,255,156,0.1); border: 1px solid rgba(71,255,156,0.25); color: var(--success); }
+  .alert-error { background: rgba(255,94,94,0.1); border: 1px solid rgba(255,94,94,0.25); color: var(--danger); }
+
+  /* Stats row */
+  .stats-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 20px; }
+  @media(max-width:600px) { .stats-row { grid-template-columns: 1fr 1fr; } }
+  .stat-card { background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
+  .stat-val { font-family: 'Syne', sans-serif; font-size: 1.6rem; font-weight: 800; color: var(--accent); }
+  .stat-label { font-size: 0.7rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; margin-top: 4px; }
+</style>
+</head>
+<body>
+<nav>
+  <div class="nav-brand">⏱ Time Clock</div>
+  <div class="nav-links">
+    <button class="nav-tab active" onclick="showPage('today')">Today</button>
+    <button class="nav-tab" onclick="showPage('report')">Payroll Report</button>
+    <button class="nav-tab" onclick="showPage('trends')">Trends</button>
+    <button class="nav-tab" onclick="showPage('employees')">Employees</button>
+  </div>
+  <div class="nav-right">
+    <a href="/admin/logout" class="logout no-print">Log Out</a>
+  </div>
+</nav>
+
+<div class="main">
+
+  <!-- TODAY -->
+  <div class="page active" id="page-today">
+    <div class="card">
+      <div class="card-title">Today's Attendance <span id="todayDate"></span></div>
+      <div class="stats-row" id="statsRow">
+        <div class="stat-card"><div class="stat-val" id="statIn">—</div><div class="stat-label">Currently In</div></div>
+        <div class="stat-card"><div class="stat-val" id="statLunch">—</div><div class="stat-label">At Lunch</div></div>
+        <div class="stat-card"><div class="stat-val" id="statOut">—</div><div class="stat-label">Clocked Out</div></div>
+      </div>
+      <div class="table-wrap">
+        <table id="todayTable">
+          <thead><tr><th>Employee</th><th>Clock In</th><th>Lunch Out</th><th>Lunch In</th><th>Clock Out</th><th>Hours Today</th><th>Status</th></tr></thead>
+          <tbody id="todayBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- REPORT -->
+  <div class="page" id="page-report">
+    <div class="card no-print">
+      <div class="card-title">Payroll Report</div>
+      <div class="form-row" style="align-items:flex-end">
+        <div class="form-group">
+          <label class="form-label">Start Date</label>
+          <input type="date" id="reportStart" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">End Date</label>
+          <input type="date" id="reportEnd" />
+        </div>
+        <button class="btn btn-accent" onclick="loadReport()">Generate →</button>
+        <button class="btn btn-ghost" onclick="setCurrentPeriod()">Current Period</button>
+      </div>
+    </div>
+
+    <div id="reportOutput" style="display:none">
+      <div class="report-header no-print" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+        <div style="font-family:Syne,sans-serif;font-size:1.1rem;font-weight:700" id="reportTitle"></div>
+        <div style="display:flex;gap:10px">
+          <button class="btn btn-ghost no-print" onclick="window.print()">🖨 Print</button>
+          <button class="btn btn-ghost no-print" onclick="downloadCSV()">⬇ CSV</button>
+        </div>
+      </div>
+      <div id="reportContent"></div>
+    </div>
+  </div>
+
+  <!-- TRENDS -->
+  <div class="page" id="page-trends">
+    <div class="grid2">
+      <div class="card">
+        <div class="card-title">Team Hours — Last 30 Days</div>
+        <div class="chart-wrap"><canvas id="hoursChart"></canvas></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Average Arrival Time</div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Employee</th><th>Avg Arrival</th></tr></thead>
+            <tbody id="arrivalsBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- EMPLOYEES -->
+  <div class="page" id="page-employees">
+    <div class="card">
+      <div class="card-title">Add Employee</div>
+      <div class="alert alert-success" id="empSuccess">Employee added successfully.</div>
+      <div class="alert alert-error" id="empError"></div>
+      <div class="form-row" style="align-items:flex-end">
+        <div class="form-group">
+          <label class="form-label">Full Name</label>
+          <input type="text" id="newName" placeholder="Jane Smith" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Employee Code</label>
+          <input type="text" id="newCode" placeholder="e.g. JS01" maxlength="10" style="text-transform:uppercase" />
+        </div>
+        <button class="btn btn-accent" onclick="addEmployee()">Add Employee</button>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">All Employees</div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Name</th><th>Code</th><th>Added</th><th>Action</th></tr></thead>
+          <tbody id="empBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  let hoursChart = null;
+
+  function showPage(name) {
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+    document.getElementById('page-' + name).classList.add('active');
+    event.target.classList.add('active');
+
+    if (name === 'today') loadToday();
+    if (name === 'trends') loadTrends();
+    if (name === 'employees') loadEmployees();
+  }
+
+  // ── TODAY ──────────────────────────────────────────────────────────────────
+  async function loadToday() {
+    const now = new Date();
+    document.getElementById('todayDate').textContent = now.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'});
+
+    const res = await fetch('/api/admin/today');
+    const data = await res.json();
+
+    let inCount = 0, lunchCount = 0, outCount = 0;
+    const tbody = document.getElementById('todayBody');
+    tbody.innerHTML = '';
+
+    data.forEach(emp => {
+      const statusInfo = {
+        'not_in':            ['dot-out',   'Not In'],
+        'working_morning':   ['dot-in',    'Working'],
+        'at_lunch':          ['dot-lunch', 'At Lunch'],
+        'working_afternoon': ['dot-in',    'Working'],
+        'clocked_out':       ['dot-out',   'Clocked Out']
+      }[emp.status] || ['dot-out','—'];
+
+      if (['working_morning','working_afternoon'].includes(emp.status)) inCount++;
+      else if (emp.status === 'at_lunch') lunchCount++;
+      else if (emp.status === 'clocked_out') outCount++;
+
+      tbody.innerHTML += `<tr>
+        <td><strong>${emp.name}</strong></td>
+        <td>${emp.clock_in}</td>
+        <td>${emp.lunch_out}</td>
+        <td>${emp.lunch_in}</td>
+        <td>${emp.clock_out}</td>
+        <td>${emp.hours_today}</td>
+        <td><span class="status-dot ${statusInfo[0]}"></span>${statusInfo[1]}</td>
+      </tr>`;
+    });
+
+    document.getElementById('statIn').textContent = inCount;
+    document.getElementById('statLunch').textContent = lunchCount;
+    document.getElementById('statOut').textContent = outCount;
+  }
+
+  // ── REPORT ─────────────────────────────────────────────────────────────────
+  function setCurrentPeriod() {
+    const today = new Date();
+    const day = today.getDate();
+    let start, end;
+    if (day >= 1 && day <= 15) {
+      start = new Date(today.getFullYear(), today.getMonth(), 1);
+      end = new Date(today.getFullYear(), today.getMonth(), 15);
+    } else {
+      start = new Date(today.getFullYear(), today.getMonth(), 16);
+      end = new Date(today.getFullYear(), today.getMonth()+1, 0);
+    }
+    document.getElementById('reportStart').value = start.toISOString().slice(0,10);
+    document.getElementById('reportEnd').value = end.toISOString().slice(0,10);
+  }
+
+  async function loadReport() {
+    const start = document.getElementById('reportStart').value;
+    const end = document.getElementById('reportEnd').value;
+    if (!start || !end) return alert('Please select both dates.');
+
+    const res = await fetch(`/api/admin/report?start=${start}&end=${end}`);
+    const data = await res.json();
+
+    document.getElementById('reportTitle').textContent = `${data.start} — ${data.end}`;
+    document.getElementById('reportOutput').style.display = 'block';
+
+    const content = document.getElementById('reportContent');
+    content.innerHTML = '';
+
+    data.employees.forEach(emp => {
+      if (emp.daily.length === 0) return;
+
+      let rows = emp.daily.map(d => `<tr>
+        <td>${d.date}</td><td>${d.clock_in}</td><td>${d.lunch_out}</td>
+        <td>${d.lunch_in}</td><td>${d.clock_out}</td>
+        <td><strong>${d.hours}</strong></td>
+      </tr>`).join('');
+
+      content.innerHTML += `<div class="card emp-block">
+        <div class="emp-block-name">
+          <span>${emp.name}</span>
+          <span class="emp-total">${emp.total_hours} · ${emp.days_worked} day${emp.days_worked !== 1 ? 's' : ''}</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Date</th><th>Clock In</th><th>Lunch Out</th><th>Lunch In</th><th>Clock Out</th><th>Hours</th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+      </div>`;
+    });
+  }
+
+  function downloadCSV() {
+    const start = document.getElementById('reportStart').value;
+    const end = document.getElementById('reportEnd').value;
+    window.location.href = `/api/admin/report/csv?start=${start}&end=${end}`;
+  }
+
+  // ── TRENDS ─────────────────────────────────────────────────────────────────
+  async function loadTrends() {
+    const res = await fetch('/api/admin/trends');
+    const data = await res.json();
+
+    // Chart
+    if (hoursChart) hoursChart.destroy();
+    const ctx = document.getElementById('hoursChart').getContext('2d');
+    hoursChart = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: data.chart.map(d => d.date),
+        datasets: [{
+          label: 'Total Hours',
+          data: data.chart.map(d => d.hours),
+          backgroundColor: 'rgba(232,255,71,0.25)',
+          borderColor: 'rgba(232,255,71,0.8)',
+          borderWidth: 1.5,
+          borderRadius: 4
+        }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { ticks: { color: '#666', font: { size: 10 }, maxTicksLimit: 10 }, grid: { color: '#1e1e24' } },
+          y: { ticks: { color: '#666', font: { size: 10 } }, grid: { color: '#1e1e24' } }
+        }
+      }
+    });
+
+    // Arrivals
+    const tbody = document.getElementById('arrivalsBody');
+    tbody.innerHTML = '';
+    if (data.avg_arrivals.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="2" style="color:var(--muted);text-align:center">No data yet</td></tr>';
+    } else {
+      data.avg_arrivals.forEach(a => {
+        tbody.innerHTML += `<tr><td>${a.name}</td><td>${a.avg_arrival}</td></tr>`;
+      });
+    }
+  }
+
+  // ── EMPLOYEES ──────────────────────────────────────────────────────────────
+  async function loadEmployees() {
+    const res = await fetch('/api/admin/employees');
+    const data = await res.json();
+    const tbody = document.getElementById('empBody');
+    tbody.innerHTML = '';
+    data.forEach(emp => {
+      const added = new Date(emp.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+      tbody.innerHTML += `<tr>
+        <td>${emp.name}</td>
+        <td><code style="background:var(--surface2);padding:3px 8px;border-radius:4px">${emp.code}</code></td>
+        <td>${added}</td>
+        <td><button class="btn btn-danger" onclick="removeEmployee(${emp.id},'${emp.name}')">Remove</button></td>
+      </tr>`;
+    });
+  }
+
+  async function addEmployee() {
+    const name = document.getElementById('newName').value.trim();
+    const code = document.getElementById('newCode').value.trim().toUpperCase();
+    document.getElementById('empSuccess').style.display = 'none';
+    document.getElementById('empError').style.display = 'none';
+
+    if (!name || !code) {
+      showEmpAlert('error', 'Name and code are both required.');
+      return;
+    }
+    const res = await fetch('/api/admin/employees', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({name, code})
+    });
+    const data = await res.json();
+    if (data.success) {
+      document.getElementById('newName').value = '';
+      document.getElementById('newCode').value = '';
+      showEmpAlert('success', 'Employee added!');
+      loadEmployees();
+    } else {
+      showEmpAlert('error', data.message);
+    }
+  }
+
+  async function removeEmployee(id, name) {
+    if (!confirm(`Remove ${name}? Their punch history will be kept.`)) return;
+    await fetch(`/api/admin/employees/${id}`, {method:'DELETE'});
+    loadEmployees();
+  }
+
+  function showEmpAlert(type, msg) {
+    const el = document.getElementById(type === 'success' ? 'empSuccess' : 'empError');
+    el.textContent = msg;
+    el.style.display = 'block';
+    setTimeout(() => el.style.display = 'none', 4000);
+  }
+
+  // Init
+  setCurrentPeriod();
+  loadToday();
+  setInterval(loadToday, 60000); // refresh today every minute
+</script>
+</body>
+</html>
