@@ -130,12 +130,12 @@
       <div class="card-title">Today's Attendance <span id="todayDate"></span></div>
       <div class="stats-row">
         <div class="stat-card"><div class="stat-val" id="statIn">—</div><div class="stat-label">Currently In</div></div>
-        <div class="stat-card"><div class="stat-val" id="statLunch">—</div><div class="stat-label">At Lunch</div></div>
-        <div class="stat-card"><div class="stat-val" id="statOut">—</div><div class="stat-label">Clocked Out</div></div>
+        <div class="stat-card"><div class="stat-val" id="statLunch">—</div><div class="stat-label">Out / On Break</div></div>
+        <div class="stat-card"><div class="stat-val" id="statOut">—</div><div class="stat-label">Done for Day</div></div>
       </div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Employee</th><th>Clock In</th><th>Lunch Out</th><th>Lunch In</th><th>Clock Out</th><th>Hours Today</th><th>Status</th></tr></thead>
+          <thead><tr><th>Employee</th><th>Punch 1</th><th>Punch 2</th><th>Punch 3</th><th>Punch 4</th><th>Hours Today</th><th>Status</th></tr></thead>
           <tbody id="todayBody"></tbody>
         </table>
       </div>
@@ -253,15 +253,14 @@
     data.forEach(emp => {
       const statusInfo = {
         'not_in':['dot-out','Not In'],
-        'working_morning':['dot-in','Working'],
-        'at_lunch':['dot-lunch','At Lunch'],
-        'working_afternoon':['dot-in','Working'],
-        'clocked_out':['dot-out','Clocked Out']
+        'working':['dot-in','Working'],
+        'out':['dot-lunch','Out'],
+        'done':['dot-out','Done']
       }[emp.status] || ['dot-out','—'];
-      if (['working_morning','working_afternoon'].includes(emp.status)) inCount++;
-      else if (emp.status==='at_lunch') lunchCount++;
-      else if (emp.status==='clocked_out') outCount++;
-      tbody.innerHTML += `<tr><td><strong>${emp.name}</strong></td><td>${emp.clock_in}</td><td>${emp.lunch_out}</td><td>${emp.lunch_in}</td><td>${emp.clock_out}</td><td>${emp.hours_today}</td><td><span class="status-dot ${statusInfo[0]}"></span>${statusInfo[1]}</td></tr>`;
+      if (emp.status==='working') inCount++;
+      else if (emp.status==='out') lunchCount++;
+      else if (emp.status==='done') outCount++;
+      tbody.innerHTML += `<tr><td><strong>${emp.name}</strong></td><td>${emp.punch1}</td><td>${emp.punch2}</td><td>${emp.punch3}</td><td>${emp.punch4}</td><td>${emp.hours_today}</td><td><span class="status-dot ${statusInfo[0]}"></span>${statusInfo[1]}</td></tr>`;
     });
     document.getElementById('statIn').textContent = inCount;
     document.getElementById('statLunch').textContent = lunchCount;
@@ -295,8 +294,8 @@
     content.innerHTML = '';
     data.employees.forEach(emp => {
       if (emp.daily.length === 0) return;
-      let rows = emp.daily.map(d => `<tr><td>${d.date}</td><td>${d.clock_in}</td><td>${d.lunch_out}</td><td>${d.lunch_in}</td><td>${d.clock_out}</td><td><strong>${d.hours}</strong></td></tr>`).join('');
-      content.innerHTML += `<div class="card emp-block"><div class="emp-block-name"><span>${emp.name}</span><span class="emp-total">${emp.total_hours} · ${emp.days_worked} day${emp.days_worked!==1?'s':''}</span></div><div class="table-wrap"><table><thead><tr><th>Date</th><th>Clock In</th><th>Lunch Out</th><th>Lunch In</th><th>Clock Out</th><th>Hours</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
+      let rows = emp.daily.map(d => `<tr><td>${d.date}</td><td>${d.punch1}</td><td>${d.punch2}</td><td>${d.punch3||'—'}</td><td>${d.punch4||'—'}</td><td><strong>${d.hours}</strong></td></tr>`).join('');
+      content.innerHTML += `<div class="card emp-block"><div class="emp-block-name"><span>${emp.name}</span><span class="emp-total">${emp.total_hours} · ${emp.days_worked} day${emp.days_worked!==1?'s':''}</span></div><div class="table-wrap"><table><thead><tr><th>Date</th><th>Punch 1</th><th>Punch 2</th><th>Punch 3</th><th>Punch 4</th><th>Hours</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
     });
   }
 
