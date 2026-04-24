@@ -64,51 +64,51 @@ init_db()
 # ─── Helpers ─────────────────────────────────────────────────────────────────
 
 def calc_hours(punches_for_day):
-    punch_map = {}
-    for p in punches_for_day:
-        punch_map[p['punch_type']] = p['punch_time']
-
+    """Calculate total hours from up to 4 punches. Odd punches=in, even=out."""
+    sorted_punches = sorted(punches_for_day, key=lambda p: p['punch_time'])
     total_minutes = 0
-
-    if 'clock_in' in punch_map and 'lunch_out' in punch_map:
-        t1 = datetime.fromisoformat(punch_map['clock_in'])
-        t2 = datetime.fromisoformat(punch_map['lunch_out'])
+    # Pair them up: punch1-punch2, punch3-punch4
+    for i in range(0, len(sorted_punches) - 1, 2):
+        t1 = datetime.fromisoformat(sorted_punches[i]['punch_time'])
+        t2 = datetime.fromisoformat(sorted_punches[i+1]['punch_time'])
         total_minutes += (t2 - t1).total_seconds() / 60
-    elif 'clock_in' in punch_map and 'clock_out' in punch_map and 'lunch_out' not in punch_map:
-        t1 = datetime.fromisoformat(punch_map['clock_in'])
-        t2 = datetime.fromisoformat(punch_map['clock_out'])
-        total_minutes += (t2 - t1).total_seconds() / 60
-
-    if 'lunch_in' in punch_map and 'clock_out' in punch_map:
-        t1 = datetime.fromisoformat(punch_map['lunch_in'])
-        t2 = datetime.fromisoformat(punch_map['clock_out'])
-        total_minutes += (t2 - t1).total_seconds() / 60
-
     hours = int(total_minutes // 60)
     minutes = int(total_minutes % 60)
     return hours, minutes, total_minutes
 
-def get_employee_status(employee_id):
-    today = date.today().isoformat()
+def get_pst_today():
+    """Always return today's date in PST/PDT timezone."""
+    pst = pytz.timezone('America/Los_Angeles')
+    return datetime.now(pst).date()
+
+def get_today_punches(employee_id):
+    """Get all punches for employee today (PST)."""
+    today = get_pst_today().isoformat()
     with get_db() as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute('SELECT * FROM punches WHERE employee_id=%s AND date=%s ORDER BY punch_time', (employee_id, today))
-            punches = cur.fetchall()
+            return cur.fetchall()
 
-    punch_types = [p['punch_type'] for p in punches]
-
-    if not punch_types: return 'not_in'
-    if 'clock_out' in punch_types: return 'clocked_out'
-    if 'lunch_in' in punch_types: return 'working_afternoon'
-    if 'lunch_out' in punch_types: return 'at_lunch'
-    if 'clock_in' in punch_types: return 'working_morning'
+def get_employee_status(employee_id):
+    """Simple 4-punch system. Count punches today to determine status."""
+    punches = get_today_punches(employee_id)
+    count = len(punches)
+    if count == 0: return 'not_in'
+    if count == 1: return 'working'
+    if count == 2: return 'out'
+    if count == 3: return 'working'
+    if count >= 4: return 'done'
     return 'not_in'
 
-def next_punch_type(status):
-    return {'not_in':'clock_in','working_morning':'lunch_out','at_lunch':'lunch_in','working_afternoon':'clock_out','clocked_out':None}.get(status)
-
 def next_punch_label(status):
-    return {'not_in':'Clock In','working_morning':'Lunch Out','at_lunch':'Back from Lunch','working_afternoon':'Clock Out','clocked_out':None}.get(status)
+    return {'not_in':'Clock In','working':'Clock Out','out':'Clock In','done':None}.get(status)
+
+def next_punch_number(employee_id):
+    """Return the next punch number (1-4) or None if done."""
+    punches = get_today_punches(employee_id)
+    count = len(punches)
+    if count >= 4: return None
+    return count + 1
 
 # ─── Employee Routes ──────────────────────────────────────────────────────────
 
@@ -130,24 +130,20 @@ def lookup():
         return jsonify({'success': False, 'message': 'Code not found. Please try again.'})
 
     status = get_employee_status(emp['id'])
-    next_type = next_punch_type(status)
-    next_label = next_punch_label(status)
+    label = next_punch_label(status)
 
-    if next_type is None:
+    if status == 'done':
         return jsonify({'success':True,'employee_id':emp['id'],'name':emp['name'],'status':status,'next_punch':None,'next_label':'Done for today! See you tomorrow 👋','done':True})
 
-    return jsonify({'success':True,'employee_id':emp['id'],'name':emp['name'],'status':status,'next_punch':next_type,'next_label':next_label,'done':False})
+    return jsonify({'success':True,'employee_id':emp['id'],'name':emp['name'],'status':status,'next_punch':'punch','next_label':label,'done':False})
 
 @app.route('/api/punch', methods=['POST'])
 def punch():
     data = request.json
     employee_id = data.get('employee_id')
-    punch_type = data.get('punch_type')
-
-    if punch_type not in ['clock_in','lunch_out','lunch_in','clock_out']:
-        return jsonify({'success': False, 'message': 'Invalid punch type.'})
 
     now = datetime.now(pytz.timezone('America/Los_Angeles'))
+    today_pst = now.date().isoformat()
 
     with get_db() as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
@@ -156,19 +152,24 @@ def punch():
             if not emp:
                 return jsonify({'success': False, 'message': 'Employee not found.'})
 
-            status = get_employee_status(employee_id)
-            expected = next_punch_type(status)
-            if punch_type != expected:
-                return jsonify({'success': False, 'message': 'Unexpected punch type.'})
+            # Count today's punches
+            cur.execute('SELECT COUNT(*) as cnt FROM punches WHERE employee_id=%s AND date=%s', (employee_id, today_pst))
+            count = cur.fetchone()['cnt']
+
+            if count >= 4:
+                return jsonify({'success': False, 'message': 'Maximum punches reached for today.'})
+
+            # Determine punch type based on count (odd=in, even=out)
+            punch_type = 'clock_in' if count % 2 == 0 else 'clock_out'
 
             cur.execute(
                 'INSERT INTO punches (employee_id, punch_type, punch_time, date) VALUES (%s,%s,%s,%s)',
-                (employee_id, punch_type, now.isoformat(), date.today().isoformat())
+                (employee_id, punch_type, now.isoformat(), today_pst)
             )
         conn.commit()
 
-    labels = {'clock_in':'Clocked in','lunch_out':'Out for lunch','lunch_in':'Back from lunch','clock_out':'Clocked out'}
-    return jsonify({'success':True,'message':f"{labels[punch_type]} at {now.strftime('%I:%M %p')}","time":now.strftime('%I:%M %p'),'punch_type':punch_type})
+    label = 'Clocked in' if punch_type == 'clock_in' else 'Clocked out'
+    return jsonify({'success':True,'message':f"{label} at {now.strftime('%I:%M %p')}","time":now.strftime('%I:%M %p'),'punch_type':punch_type})
 
 # ─── Admin Routes ─────────────────────────────────────────────────────────────
 
@@ -231,7 +232,7 @@ def deactivate_employee(emp_id):
 @app.route('/api/admin/today')
 def today_summary():
     if not session.get('admin'): return jsonify({'error':'Unauthorized'}), 401
-    today = date.today().isoformat()
+    today = get_pst_today().isoformat()
     with get_db() as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute('SELECT * FROM employees WHERE active=1 ORDER BY name')
@@ -251,8 +252,16 @@ def today_summary():
         emp_punches = punch_by_emp.get(eid, [])
         status = get_employee_status(eid)
         h, m, total_min = calc_hours(emp_punches)
-        punch_map = {p['punch_type']: datetime.fromisoformat(p['punch_time']).strftime('%I:%M %p') for p in emp_punches}
-        result.append({'id':eid,'name':emp['name'],'status':status,'clock_in':punch_map.get('clock_in','—'),'lunch_out':punch_map.get('lunch_out','—'),'lunch_in':punch_map.get('lunch_in','—'),'clock_out':punch_map.get('clock_out','—'),'hours_today':f"{h}h {m}m" if total_min > 0 else '—'})
+        sorted_punches = sorted(emp_punches, key=lambda p: p['punch_time'])
+        punch_times = [datetime.fromisoformat(p['punch_time']).strftime('%I:%M %p') for p in sorted_punches]
+        result.append({
+            'id':eid,'name':emp['name'],'status':status,
+            'punch1':punch_times[0] if len(punch_times)>0 else '—',
+            'punch2':punch_times[1] if len(punch_times)>1 else '—',
+            'punch3':punch_times[2] if len(punch_times)>2 else '—',
+            'punch4':punch_times[3] if len(punch_times)>3 else '—',
+            'hours_today':f"{h}h {m}m" if total_min > 0 else '—'
+        })
     return jsonify(result)
 
 @app.route('/api/admin/report')
@@ -296,8 +305,16 @@ def payroll_report():
             if mins > 0:
                 days_worked += 1
                 total_minutes += mins
-                punch_map = {p['punch_type']: datetime.fromisoformat(p['punch_time']).strftime('%I:%M %p') for p in day_punches}
-                daily.append({'date':current.strftime('%a %b %d'),'clock_in':punch_map.get('clock_in','—'),'lunch_out':punch_map.get('lunch_out','—'),'lunch_in':punch_map.get('lunch_in','—'),'clock_out':punch_map.get('clock_out','—'),'hours':f"{h}h {m}m"})
+                sorted_dp = sorted(day_punches, key=lambda p: p['punch_time'])
+                pt = [datetime.fromisoformat(p['punch_time']).strftime('%I:%M %p') for p in sorted_dp]
+                daily.append({
+                    'date':current.strftime('%a %b %d'),
+                    'punch1':pt[0] if len(pt)>0 else '—',
+                    'punch2':pt[1] if len(pt)>1 else '—',
+                    'punch3':pt[2] if len(pt)>2 else '—',
+                    'punch4':pt[3] if len(pt)>3 else '—',
+                    'hours':f"{h}h {m}m"
+                })
             current += timedelta(days=1)
         th = int(total_minutes // 60)
         tm = int(total_minutes % 60)
@@ -380,7 +397,7 @@ def generate_csv_report(start_str, end_str):
 
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(['Employee','Date','Clock In','Lunch Out','Lunch In','Clock Out','Hours Worked'])
+    writer.writerow(['Employee','Date','Punch 1','Punch 2','Punch 3','Punch 4','Hours Worked'])
 
     for eid, emp_data in data.items():
         total_min = 0
@@ -392,7 +409,10 @@ def generate_csv_report(start_str, end_str):
             if mins > 0:
                 total_min += mins
                 punch_map = {p['punch_type']: datetime.fromisoformat(p['punch_time']).strftime('%I:%M %p') for p in day_punches}
-                writer.writerow([emp_data['name'],current.strftime('%m/%d/%Y'),punch_map.get('clock_in',''),punch_map.get('lunch_out',''),punch_map.get('lunch_in',''),punch_map.get('clock_out',''),f"{h}h {m}m"])
+                sorted_dp2 = sorted(day_punches, key=lambda p: p['punch_time'])
+                pt2 = [datetime.fromisoformat(p['punch_time']).strftime('%I:%M %p') for p in sorted_dp2]
+                while len(pt2) < 4: pt2.append('')
+                writer.writerow([emp_data['name'],current.strftime('%m/%d/%Y'),pt2[0],pt2[1],pt2[2],pt2[3],f"{h}h {m}m"])
             current += timedelta(days=1)
         th = int(total_min//60); tm = int(total_min%60)
         writer.writerow([emp_data['name'],'TOTAL','','','',f"{th}h {tm}m"])
