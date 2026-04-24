@@ -229,13 +229,9 @@
     <div class="label">Enter Your Employee Code</div>
     <input type="text" class="code-input" id="codeInput" placeholder="• • • •" maxlength="10" autocomplete="off" />
 
-    <div class="employee-info" id="empInfo">
-      <div class="emp-name" id="empName"></div>
-      <div id="empStatus"></div>
     </div>
 
-    <button class="btn btn-lookup" id="lookupBtn" onclick="lookup()">Find Me →</button>
-    <button class="btn btn-punch" id="punchBtn" onclick="punch()"></button>
+    <button class="btn btn-punch" id="submitBtn" onclick="submit()">Submit →</button>
 
     <div class="result-msg" id="resultMsg"></div>
 
@@ -245,12 +241,6 @@
 </div>
 
 <script>
-  
-  
-
-  let currentEmployee = null;
-  let currentPunchType = null;
-
   function updateClock() {
     const now = new Date();
     document.getElementById('liveTime').textContent =
@@ -260,84 +250,58 @@
   updateClock();
   setInterval(updateClock, 1000);
 
-  document.getElementById('codeInput').addEventListener('keydown', e => { if(e.key==='Enter') lookup(); });
-  document.getElementById('codeInput').addEventListener('input', () => {
-    document.getElementById('empInfo').style.display = 'none';
-    document.getElementById('punchBtn').style.display = 'none';
-    document.getElementById('lookupBtn').style.display = 'block';
-    document.getElementById('resultMsg').style.display = 'none';
-    currentEmployee = null;
+  document.getElementById('codeInput').addEventListener('keydown', e => {
+    if (e.key === 'Enter') submit();
   });
 
-  async function lookup() {
+  async function submit() {
     const code = document.getElementById('codeInput').value.trim();
     if (!code) return;
-    const btn = document.getElementById('lookupBtn');
-    btn.classList.add('loading');
-    btn.textContent = 'Looking up...';
+
+    const btn = document.getElementById('submitBtn');
+    btn.textContent = 'Recording...';
+    btn.disabled = true;
+
     try {
-      const res = await fetch('/api/lookup', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code})});
-      const data = await res.json();
-      if (!data.success) {
-        showResult(data.message, 'error');
-        btn.classList.remove('loading');
-        btn.textContent = 'Find Me →';
+      // Step 1: lookup
+      const lookupRes = await fetch('/api/lookup', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({code})
+      });
+      const emp = await lookupRes.json();
+
+      if (!emp.success) {
+        showResult(emp.message, 'error');
+        reset();
         return;
       }
-      currentEmployee = data;
-      currentPunchType = data.next_punch;
-      document.getElementById('empName').textContent = data.name;
-      const statusLabels = {
-        'not_in':'Not clocked in yet',
-        'working_morning':'🟢 Working — morning',
-        'at_lunch':'🟡 Out to lunch',
-        'working_afternoon':'🟢 Working — afternoon',
-        'clocked_out':'⚫ Clocked out for the day'
-      };
-      const badgeClass = {
-        'not_in':'badge-out','working_morning':'badge-in',
-        'at_lunch':'badge-lunch','working_afternoon':'badge-in','clocked_out':'badge-done'
-      };
-      document.getElementById('empStatus').innerHTML = `<span class="status-badge ${badgeClass[data.status]}">${statusLabels[data.status]}</span>`;
-      document.getElementById('empInfo').style.display = 'block';
-      document.getElementById('empInfo').classList.add('fade-in');
-      document.getElementById('resultMsg').style.display = 'none';
-      btn.style.display = 'none';
-      if (data.done) {
-        showResult("You're all done for today! See you tomorrow 👋", 'success');
-      } else {
-        const punchBtn = document.getElementById('punchBtn');
-        punchBtn.textContent = data.next_label + ' →';
-        punchBtn.style.display = 'block';
-        punchBtn.classList.add('fade-in');
-      }
-    } catch(e) {
-      showResult('Connection error. Please try again.', 'error');
-      btn.classList.remove('loading');
-      btn.textContent = 'Find Me →';
-    }
-  }
 
-  async function punch() {
-    if (!currentEmployee || !currentPunchType) return;
-    const btn = document.getElementById('punchBtn');
-    btn.classList.add('punching');
-    btn.textContent = 'Recording...';
-    try {
-      const res = await fetch('/api/punch', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({employee_id:currentEmployee.employee_id,punch_type:currentPunchType})});
-      const data = await res.json();
-      btn.style.display = 'none';
-      btn.classList.remove('punching');
-      if (data.success) {
-        showResult('✓ ' + data.message, 'success');
-        setTimeout(resetForm, 4000);
-      } else {
-        showResult(data.message, 'error');
-        resetForm();
+      if (emp.done) {
+        showResult("You're all done for today! See you tomorrow 👋", 'success');
+        setTimeout(resetForm, 3500);
+        return;
       }
+
+      // Step 2: immediately punch
+      const punchRes = await fetch('/api/punch', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({employee_id: emp.employee_id})
+      });
+      const result = await punchRes.json();
+
+      if (result.success) {
+        showResult('✓ ' + emp.name + ' — ' + result.message, 'success');
+        setTimeout(resetForm, 3500);
+      } else {
+        showResult(result.message, 'error');
+        setTimeout(resetForm, 3500);
+      }
+
     } catch(e) {
       showResult('Connection error. Please try again.', 'error');
-      btn.classList.remove('punching');
+      reset();
     }
   }
 
@@ -348,16 +312,16 @@
     el.style.display = 'block';
   }
 
+  function reset() {
+    const btn = document.getElementById('submitBtn');
+    btn.textContent = 'Submit →';
+    btn.disabled = false;
+  }
+
   function resetForm() {
     document.getElementById('codeInput').value = '';
-    document.getElementById('empInfo').style.display = 'none';
-    document.getElementById('punchBtn').style.display = 'none';
-    document.getElementById('lookupBtn').style.display = 'block';
-    document.getElementById('lookupBtn').classList.remove('loading');
-    document.getElementById('lookupBtn').textContent = 'Find Me →';
     document.getElementById('resultMsg').style.display = 'none';
-    currentEmployee = null;
-    currentPunchType = null;
+    reset();
     document.getElementById('codeInput').focus();
   }
 </script>
